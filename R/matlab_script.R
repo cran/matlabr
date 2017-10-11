@@ -5,15 +5,42 @@
 #' @param try_defaults (logical) If \code{matlab} is not found from 
 #' \code{Sys.which}, and \code{matlab.path} not found, then try some 
 #' default PATHs for Linux and OS X.  
+#' @param desktop Should desktop be active for MATLAB?
+#' @param splash Should splash be active for MATLAB?
+#' @param display Should display be active for MATLAB?
 #' @export
 #' @return Character of command for matlab
-get_matlab = function(try_defaults = TRUE){
+#' @examples 
+#' if (have_matlab()) {
+#' get_matlab()
+#' }
+get_matlab = function(
+  try_defaults = TRUE,
+  desktop = FALSE,
+  splash = FALSE,
+  display = FALSE){
   # find.matlab <- system("which matlab", ignore.stdout=TRUE)
-  mat = paste0("matlab", 
-               ifelse(.Platform$OS.type %in% "windows", ".exe", "")
+  mat = paste0(
+    "matlab", 
+    ifelse(
+      .Platform$OS.type %in% "windows", 
+      ".exe", 
+      "")
   )
   find.matlab = as.numeric(Sys.which(mat) == "")
-  matcmd <- paste0(mat, ' -nodesktop -nosplash -nodisplay -r ')
+  myfunc = function(x, name) {
+    x = as.logical(x)
+    ifelse(x, "", paste0("-no", name))
+  }
+  desktop = myfunc(desktop, "desktop")
+  splash = myfunc(splash, "splash")
+  display = myfunc(display, "display")
+  
+  matcmd <- paste0(mat, " ", 
+                   desktop, " ", 
+                   splash, " ", 
+                   display, " -r ")
+  
   if (find.matlab != 0) {
     mpath = getOption("matlab.path")
     
@@ -28,7 +55,9 @@ get_matlab = function(try_defaults = TRUE){
         def_paths = c(
           "/usr/local/bin",
           "/usr/bin",
-          paste0("/Applications/MATLAB_R", mac_ends, ".app/bin")
+          paste0("/Applications/MATLAB_R", mac_ends, ".app/bin"),
+          paste0("C:/Program Files/MATLAB/R", mac_ends, "/bin"),
+          paste0("D:/Program Files/MATLAB/R", mac_ends, "/bin")
         )
         for (ipath in def_paths) {
           def_path = file.path(ipath, mat)
@@ -56,24 +85,13 @@ get_matlab = function(try_defaults = TRUE){
 #' MATLAB's path accessible 
 #' @export
 #' @return Logical \code{TRUE} is MATLAB is accessible, \code{FALSE} if not
-have_matlab = function(){
-  x = suppressWarnings(try(get_matlab(), silent=TRUE))
-  return(!inherits(x, "try-error"))
-}
-
-
-#' @title Logical check if MALTAB is accessible
-#' @description Uses \code{get_matlab} to check if MATLAB is accessible 
-#' or the option
-#' \code{matlab.path} is set and returns logical
-#' @return Logical TRUE is MALTAB is accessible, FALSE if not
-#' @export
-#' @examples
+#' @examples 
 #' have_matlab()
 have_matlab = function(){
-  x = suppressWarnings(try(get_matlab(), silent=TRUE))
+  x = suppressWarnings(try(get_matlab(), silent = TRUE))
   return(!inherits(x, "try-error"))
 }
+
 
 
 #' @title Run matlab script
@@ -81,19 +99,35 @@ have_matlab = function(){
 #' @description This function runs a matlab script, and 
 #' returns exit statuses
 #' @param fname Filename of matlab script (.m file)
+#' @param verbose print diagnostic messages
 #' @param ... Options passed to \code{\link{system}}
+#' @inheritParams get_matlab
 #' @export
 #' @return Exit status of matlab code
-run_matlab_script = function(fname, ...){
+run_matlab_script = function(
+  fname, 
+  verbose = TRUE, 
+  desktop = FALSE,
+  splash = FALSE,
+  display = FALSE,
+  ...){
   stopifnot(file.exists(fname))
-  matcmd = get_matlab()
+  matcmd = get_matlab(  
+    desktop = desktop,
+    splash = splash,
+    display = display)
   cmd = paste0(' "', "try, run('", fname, "'); ",
                "catch err, disp(err.message); ", 
                "exit(1); end; exit(0);", '"')  
   cmd = paste0(matcmd, cmd)
+  if (verbose) {
+    message("Command run is:")
+    message(cmd)
+  }
   x <- system(cmd, ...)
   return(x)
 }
+
 
 #' @title Runs matlab code
 #'
@@ -114,14 +148,15 @@ run_matlab_script = function(fname, ...){
 #'    run_matlab_code(c("disp('The version of the matlab is:')", "disp(version)"))
 #'    run_matlab_code(c("x = 5", "disp(['The value of x is ', num2str(x)])"))
 #' }
-run_matlab_code = function(code, endlines = TRUE, verbose = TRUE,
-                           add_clear_all = FALSE,
-                           ...){
-  matcmd = get_matlab()
+run_matlab_code = function(
+  code, endlines = TRUE, verbose = TRUE,
+  add_clear_all = FALSE,
+  ...){
+  # matcmd = get_matlab()
   code = c(ifelse(add_clear_all, "clear all;", ""), 
            paste0("cd('", getwd(), "');"), code)
   sep = ifelse(endlines, ";", " ")
-  code = paste0(code, sep = sep, collapse= "\n")
+  code = paste0(code, sep = sep, collapse = "\n")
   code = gsub(";;", ";", code)
   #   cmd <- paste(' "try \n')
   #   cmd <- paste(cmd, code)
@@ -132,50 +167,9 @@ run_matlab_code = function(code, endlines = TRUE, verbose = TRUE,
   cmd = code
   fname = tempfile(fileext = ".m")
   cat(cmd, file = fname)
-  if (verbose){
-    cat(paste0(fname, "\n"))
+  if (verbose) {
+    message(paste0("Script created: ", fname))
   }
-  x = run_matlab_script(fname, ...)
+  x = run_matlab_script(fname, verbose = verbose, ...)
   return(x)
-}
-
-
-
-#' @title Convert R vector to matlab cell mat
-#'
-#' @description This function takes in an R vector then turns it into 
-#' a cell list
-#' @param x Character vector of values
-#' @param matname Object in matlab to be assigned
-#' @export
-#' @return Character scalar of matlab code
-rvec_to_matlabclist = function(x, matname = NULL){
-  x = paste0("{'", x, "'};")
-  x = paste(x, collapse= " ")
-  x = paste0('[', x, '];')
-  if (!is.null(matname)) x = paste0(matname, " = ", x)
-  x
-}
-
-
-
-#' @title Convert R vector to matlab cell mat
-#'
-#' @description This function takes in an R numeric and returns a
-#' status
-#' @param x Numeric vector of values
-#' @param row Create row vector instead of column vector
-#' @param matname Object in matlab to be assigned
-#' @export
-#' @return Character scalar of matlab code
-#' @import stringr
-rvec_to_matlab = function(x, row = FALSE,
-                          matname = NULL){
-  x = paste0(x, ifelse(row, ",", ";"))
-  x = paste(x, collapse= " ")
-  x = str_trim(x)
-  x = gsub(paste0(ifelse(row, ",", ";"), "$"), "", x)
-  x = paste0("[", x, "];")
-  if (!is.null(matname)) x = paste0(matname, " = ", x)
-  x
 }
