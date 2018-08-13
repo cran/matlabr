@@ -10,6 +10,8 @@
 #' @param display Should display be active for MATLAB?
 #' @param wait Should R wait for the command to finish.  Both
 #' passed to \code{\link{system}} and adds the \code{-wait} flag.
+#' @param single_thread Should the flag \code{-singleCompThread} 
+#' be executed to limit MATLAB to a single computational thread?
 #' @export
 #' @return Character of command for matlab
 #' @examples 
@@ -21,7 +23,8 @@ get_matlab = function(
   desktop = FALSE,
   splash = FALSE,
   display = FALSE,
-  wait = TRUE){
+  wait = TRUE,
+  single_thread = FALSE){
   # find.matlab <- system("which matlab", ignore.stdout=TRUE)
   mat = paste0(
     "matlab", 
@@ -47,6 +50,7 @@ get_matlab = function(
                    wait, " ",
                    desktop, " ", 
                    splash, " ", 
+                   ifelse(single_thread, "-singleCompThread ", ""),
                    display, " -r ")
   
   if (find.matlab != 0) {
@@ -119,13 +123,15 @@ run_matlab_script = function(
   splash = FALSE,
   display = FALSE,
   wait = TRUE,
+  single_thread = FALSE,
   ...){
   stopifnot(file.exists(fname))
   matcmd = get_matlab(  
     desktop = desktop,
     splash = splash,
     display = display,
-    wait = wait)
+    wait = wait,
+    single_thread = single_thread)
   cmd = paste0(' "', "try, run('", fname, "'); ",
                "catch err, disp(err.message); ", 
                "exit(1); end; exit(0);", '"')  
@@ -149,22 +155,35 @@ run_matlab_script = function(
 #' pasted to each element of the vector.
 #' @param verbose Print out filename to run
 #' @param add_clear_all Add \code{clear all;} to the beginning of code
+#' @param paths_to_add Character vector of PATHs to add to the 
+#' script using \code{\link{add_path}}
 #' @param ... Options passed to \code{\link{run_matlab_script}}
 #' @export
 #' @return Exit status of matlab code 
 #' @examples 
 #' if (have_matlab()){
+#'    run_matlab_code(c("disp('The version of the matlab is:')", "disp(version)"),
+#'    paths_to_add = "~/")
+#' }
+#' \dontrun{ 
+#' if (have_matlab()){ 
 #'    run_matlab_code("disp(version)")
-#'    run_matlab_code(c("disp('The version of the matlab is:')", "disp(version)"))
+#'    run_matlab_code("disp(version)", paths_to_add = "~/")
 #'    run_matlab_code(c("x = 5", "disp(['The value of x is ', num2str(x)])"))
+#' }
 #' }
 run_matlab_code = function(
   code, endlines = TRUE, verbose = TRUE,
   add_clear_all = FALSE,
+  paths_to_add = NULL,
   ...){
   # matcmd = get_matlab()
   code = c(ifelse(add_clear_all, "clear all;", ""), 
            paste0("cd('", getwd(), "');"), code)
+  if (!is.null(paths_to_add)) {
+    paths_to_add = add_path(paths_to_add)
+    code = c(code, paths_to_add)
+  }
   sep = ifelse(endlines, ";", " ")
   code = paste0(code, sep = sep, collapse = "\n")
   code = gsub(";;", ";", code)
